@@ -8,7 +8,7 @@ below for an example of the output image.
 
 ## Quickstart
 
-Note: this requires `ffmpeg` to be installed outside of Pythopn. The applications
+Note: this requires `ffmpeg` to be installed outside of Python. The applications
 `ffmpeg` and `ffprobe` should be usable from your PATH for thumbsheet to find them.
 
 ```bash
@@ -26,7 +26,7 @@ To make thumbsheets for multiple videos, you have multiple options:
 
         python3 thumbsheet.py '~/vid/Die Hard I.avi' '~/vid/Die Hard II.avi'
 
-2. Use shell [globbing](https://en.wikipedia.org/wiki/Glob_(programming\))
+2. Use shell [globbing](https://en.wikipedia.org/wiki/Glob_(programming))
    wildcards to grab multiple videos (similar to passing multiple file names):
 
         python3 thumbsheet.py ~/vid/*.avi
