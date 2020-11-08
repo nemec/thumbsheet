@@ -8,6 +8,9 @@ below for an example of the output image.
 
 ## Quickstart
 
+Note: this requires `ffmpeg` to be installed outside of Pythopn. The applications
+`ffmpeg` and `ffprobe` should be usable from your PATH for thumbsheet to find them.
+
 ```bash
 python3 -m venv env
 source env/bin/activate
@@ -21,12 +24,12 @@ To make thumbsheets for multiple videos, you have multiple options:
 
 1. Pass multiple file names to the command:
 
-    python3 thumbsheet.py '~/vid/Die Hard I.avi' '~/vid/Die Hard II.avi'
+        python3 thumbsheet.py '~/vid/Die Hard I.avi' '~/vid/Die Hard II.avi'
 
 2. Use shell [globbing](https://en.wikipedia.org/wiki/Glob_(programming\))
    wildcards to grab multiple videos (similar to passing multiple file names):
 
-    python3 thumbsheet.py ~/vid/*.avi
+        python3 thumbsheet.py ~/vid/*.avi
 
 3. Use [Python globbing](https://docs.python.org/3/library/glob.html) which adds
    the additional wildcard `**` for recursive directory traversal. It matches
@@ -35,7 +38,7 @@ To make thumbsheets for multiple videos, you have multiple options:
    evaluate wildcards, you must wrap the pattern in quotes (either single or
    double quotes should work).
 
-    python3 thumbsheet.py '~/vid/**/*.avi'
+        python3 thumbsheet.py '~/vid/**/*.avi'
 
 The application has a built-in list of allowed file extensions based on
 [this list from Wikipedia](https://en.wikipedia.org/wiki/Video_file_format#List_of_video_file_formats).

@@ -9,6 +9,7 @@ import logging
 import hashlib
 import pathlib
 import ffmpeg
+import shutil
 import enum
 import sys
 import os
@@ -350,6 +351,13 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
 
 
 if __name__ == '__main__':
+    if not shutil.which('ffprobe'):
+        logging.fatal('ffprobe application cannot be found on PATH. Is ffmpeg installed?')
+        sys.exit(1)
+    if not shutil.which('ffmpeg'):
+        logging.fatal('ffmpeg application cannot be found on PATH. Is ffmpeg installed?')
+        sys.exit(1)
+
     parser = argparse.ArgumentParser()
     parser.add_argument('-a', '--all', action='store_true',
                         help='Allow all file extensions. By default, will skip '
