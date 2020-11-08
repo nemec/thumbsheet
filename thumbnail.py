@@ -19,13 +19,14 @@ logging.basicConfig(level=logging.INFO)
 
 MARGIN = 10
 HEADER_HEIGHT = 70
-BACKGROUND = (238, 238, 238) #'eeeeee'
+BACKGROUND_COLOR = (238, 238, 238) #'eeeeee'
 HEADER_TEXT_COLOR = (0, 0, 0)
 HEADER_TEXT_V_PADDING = 3
 BORDER_WIDTH = 1
-BORDER = (0, 0, 0)
+BORDER_COLOR = (0, 0, 0)
 SHADOW_MARGIN = 4
-SHADOW = (0, 0, 0) #(157, 157, 157)
+SHADOW_COLOR = (0, 0, 0) #(157, 157, 157)
+TIMESTAMP_TEXT_COLOR = (255, 255, 255)
 
 LARGE_VIDEO_FRAME_COUNT = 10000
 
@@ -33,6 +34,15 @@ TRY_FONTS = [
     ('DejaVuSans.ttf', 14),
     ('Helvetica.ttf', 14)
 ]
+
+# https://en.wikipedia.org/wiki/Video_file_format#List_of_video_file_formats
+ALLOWED_FILE_EXTENSIONS = set([
+    '.webm', '.mkv', '.flv','.vob', '.ogv', '.ogg', '.drc', '.gif', '.gifv',
+    '.mng', '.avi', '.mts', '.m2ts', '.ts', '.mov', '.qt', '.wmv', '.yuv',
+    '.rm', '.rmvb', '.viv', '.asf', '.amv', '.mp4', '.m4p', '.m4v', '.mpg',
+    '.mp2', '.mpeg', '.mpe', '.mpv', '.m2v', '.m4v', '.svi', '.3gp', '.3g2',
+    '.mxf', '.roq', '.nsv', '.f4v', '.f4p', '.f4a', '.f4b'
+])
 
 def parse_dimensions(val):
     x, sep, y = val.partition('x')
@@ -47,17 +57,29 @@ def format_time(sec):
     return f'{hours:02d}:{minutes:02d}:{sec:02d}'
     
     
-def video_info(v):
-    probe = ffmpeg.probe(str(v), count_frames=None)
+def video_info(v, count_frames=False):
+    if count_frames:
+        probe = ffmpeg.probe(str(v), count_frames=None)
+    else:
+        probe = ffmpeg.probe(str(v))
     video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
     audio_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'audio'), None)
     if video_stream is None:
         logging.error(f'No video stream in file "{v}". Skipping.')
         raise ValueError()
         
+    try:
+        num_frames = int(video_stream.get('nb_frames') or video_stream['nb_read_frames'])
+    except KeyError:
+        if count_frames:
+            raise
+        else:
+            # Try the slower frame counting method
+            logging.info("Using slower frame counting method. May take a few minutes.")
+            return video_info(v, count_frames=True)
+
     width = int(video_stream['width'])
     height = int(video_stream['height'])
-    num_frames = int(video_stream.get('nb_frames') or video_stream['nb_read_frames'])
     duration = float(video_stream.get('duration') or probe['format']['duration'])
 
     video_codec = None
@@ -114,7 +136,7 @@ def frac_to_fps(frac: str):
         return frac
 
 
-def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
+def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool, allow_all_extensions: bool):
     font = ImageFont.load_default()
     for f_test, size in TRY_FONTS:
         try:
@@ -123,12 +145,19 @@ def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
             pass
         
     videos = list(itertools.chain.from_iterable(
-        [p] if p.exists() else map(pathlib.Path, glob(str(p.expanduser()))) for p in videos))
+        [p] if p.is_file() else map(pathlib.Path, glob(str(p.expanduser()), recursive=True)) for p in videos))
     if not videos:
         logging.error("No videos matching any pattern found")
         sys.exit(1)
     
     for v in videos:
+        if not v.is_file():  # skip directories
+            continue
+        if not allow_all_extensions and v.suffix.lower() not in ALLOWED_FILE_EXTENSIONS:
+            logging.warning(f'Skipping file {v} with non-video extension. Add '
+                             '--all argument to attempt to create thumbnails '
+                             'for the file anyway.')
+            continue
         out_file = v.with_suffix('.jpg')
         if output_dir is not None:
             out_file = output_dir / out_file.name
@@ -191,7 +220,7 @@ def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
 
         frame_size = w_scaled * h_scaled * 3
         height = HEADER_HEIGHT + (MARGIN + h_scaled) * y
-        base = Image.new('RGB', (width, height), BACKGROUND)
+        base = Image.new('RGB', (width, height), BACKGROUND_COLOR)
 
         filename = v.name
         file_size = approximate_size_bytes(os.path.getsize(v))
@@ -223,14 +252,14 @@ def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
                     break
                 frame = out[frame_num * frame_size : (frame_num+1) * frame_size]
                 
-                shadow = Image.new('RGB', (w_scaled, h_scaled), SHADOW)
+                shadow = Image.new('RGB', (w_scaled, h_scaled), SHADOW_COLOR)
                 base.paste(
                     shadow,
                     (MARGIN + (MARGIN + w_scaled) * x_idx + SHADOW_MARGIN,
                     HEADER_HEIGHT + (MARGIN + h_scaled) * y_idx + SHADOW_MARGIN))
                 
                 border = Image.new('RGB',
-                    (w_scaled + 2*BORDER_WIDTH, h_scaled + 2*BORDER_WIDTH), BORDER)
+                    (w_scaled + 2*BORDER_WIDTH, h_scaled + 2*BORDER_WIDTH), BORDER_COLOR)
                 base.paste(
                     border,
                     (MARGIN + (MARGIN + w_scaled) * x_idx - BORDER_WIDTH,
@@ -244,15 +273,17 @@ def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
                 txt_w, txt_h = draw.textsize(text, font=font)
                 txt_x = w_scaled - txt_w - 5
                 txt_y = h_scaled - txt_h - 5
-                # thicker border
-                draw.text((txt_x-1, txt_y-1), text, font=font, fill=SHADOW)
-                draw.text((txt_x+1, txt_y-1), text, font=font, fill=SHADOW)
-                draw.text((txt_x-1, txt_y+1), text, font=font, fill=SHADOW)
-                draw.text((txt_x+1, txt_y+1), text, font=font, fill=SHADOW)
+
+                # jumble the text by 1px in all directions to create a
+                # border keeping the text readable
+                draw.text((txt_x-1, txt_y-1), text, font=font, fill=SHADOW_COLOR)
+                draw.text((txt_x+1, txt_y-1), text, font=font, fill=SHADOW_COLOR)
+                draw.text((txt_x-1, txt_y+1), text, font=font, fill=SHADOW_COLOR)
+                draw.text((txt_x+1, txt_y+1), text, font=font, fill=SHADOW_COLOR)
 
                 # now draw the text over it
-                draw.text((txt_x, txt_y), text, font=font, fill='white')
-                #draw.text((20, 150), 'Hello', fill='white')
+                draw.text((txt_x, txt_y), text, font=font, fill=TIMESTAMP_TEXT_COLOR)
+
                 base.paste(
                     thumb,
                     (MARGIN + (MARGIN + w_scaled) * x_idx,
@@ -263,9 +294,12 @@ def main(videos, x, y, width, output_dir: pathlib.Path, overwrite: bool):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dimensions',
-                        type=parse_dimensions,
-                        default={'x': 5, 'y': 5},
+    parser.add_argument('-a', '--all', action='store_true',
+                        help='Allow all file extensions. By default, will skip '
+                             'non-video extensions which can help when globbing '
+                             'folders with video in multiple formats and '
+                             'non-video files that should be skipped.')
+    parser.add_argument('-d', '--dimensions', type=parse_dimensions, default={'x': 5, 'y': 5},
                         help="Number of panels in WxH format. Horizontal first, then vertical")
     parser.add_argument('-w', '--width', type=int, default=1024,
                         help='Width in pixels of the output image')
@@ -281,4 +315,5 @@ if __name__ == '__main__':
         logging.fatal(f'Output directory "{args.output_dir}" does not exist or is not a directory.')
         sys.exit(1)
 
-    main(args.videos, args.dimensions['x'], args.dimensions['y'], args.width, args.output_dir, args.overwrite)
+    main(args.videos, args.dimensions['x'], args.dimensions['y'],
+         args.width, args.output_dir, args.overwrite, args.all)
