@@ -2,8 +2,9 @@
 
 
 Thumbsheet is a console application that generates a set of thumbnails
-from a video (or list of videos). See the section [Comparison](#comparison)
-below for an example of the output image.
+from a video (or list of videos).
+
+![](screenshots/thumbsheet.png)
 
 
 ## Quickstart
