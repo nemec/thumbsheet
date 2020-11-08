@@ -87,7 +87,11 @@ or `sha1` to choose the sha1 algorithm.
 
 ## Output Directory
 
-By default, images are 
+By default, images are placed in the same folder as the original video. If
+you'd prefer to collect all thumbsheets in a separate folder, use the
+`--output-dir` argument:
+
+    python3 thumbsheet.py --output-dir thumbnails/ '~/vid/*.mp4'
 
 
 ## Filename Pattern
