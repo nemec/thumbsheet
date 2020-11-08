@@ -172,6 +172,15 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         logging.error("No videos matching any pattern found")
         sys.exit(1)
     
+    # We can set scaled width here, as it's defined in the CLI, but
+    # must wait to probe video dimensions before scaled height can
+    # be calculated.
+    w_scaled = ((width - MARGIN) // x) - MARGIN
+
+    if w_scaled <= 0:
+        logging.fatal(f'Width setting {width} is too small to generate the requested number of previews.')
+        sys.exit(1)
+    
     if sort:
         videos = sorted(videos, key=str.casefold)
     for idx, v in enumerate(videos):
@@ -210,9 +219,8 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
 
         logging.debug("Extracting %d frames out of %d", thumb_count, num_frames)
         
-        w_scaled = ((width - MARGIN) // x) - MARGIN
         h_scaled = int(h * w_scaled / w)
-        
+
         fps = max(1, num_frames // bracketed_thumb_count)
 
         # for large videos, faster to run ffmpeg multiple times than evaluate
@@ -351,7 +359,12 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dimensions', type=parse_dimensions, default={'x': 5, 'y': 5},
                         help="Number of panels in WxH format. Horizontal first, then vertical")
     parser.add_argument('-w', '--width', type=int, default=1024,
-                        help='Width in pixels of the output image')
+                        help='Width in pixels of the entire thumbsheet. Height '
+                             'and width of the thumbnails is calculated based on '
+                             "the dimensions of the video. It's not recommended "
+                             'to set this value < 500, and it may fail entirely '
+                             'if the width is not large enough to accomodate '
+                             'the margin size.')
     parser.add_argument('-o', '--overwrite', action='store_true',
                         help="Automatically overwrite an existing thumbnail file if it exists, do not prompt.")
     parser.add_argument('-p', '--pattern', type=str, default=DEFAULT_FILENAME_PATTERN,
