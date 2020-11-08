@@ -33,9 +33,9 @@ different file formats (e.g. mkv) even for similarly-sized files.
 
     python3 thumbsheet.py -d 5x5 '~/vid/Die Hard I.avi'
 
-Time to process: ~4.4 seconds
+Time to process: ~5.9 seconds
 
-![](screenshots/thumbsheet.jpg)
+![](screenshots/thumbsheet.png)
 
 ### VCS
 
@@ -44,7 +44,7 @@ Time to process: ~4.4 seconds
 
 Time to process: ~13.4 seconds
 
-![](screenshots/vcs.jpg)
+![](screenshots/vcs.png)
 
 ### SlickSlice
 

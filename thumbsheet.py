@@ -6,6 +6,7 @@ from glob import glob
 import itertools
 import argparse
 import logging
+import hashlib
 import pathlib
 import ffmpeg
 import enum
@@ -16,7 +17,6 @@ import os
 logging.basicConfig(level=logging.INFO)
 
 MARGIN = 10
-HEADER_HEIGHT = 70
 BACKGROUND_COLOR = (238, 238, 238) #'eeeeee'
 HEADER_TEXT_COLOR = (0, 0, 0)
 HEADER_TEXT_V_PADDING = 3
@@ -45,6 +45,22 @@ ALLOWED_FILE_EXTENSIONS = set([
     '.mp2', '.mpeg', '.mpe', '.mpv', '.m2v', '.m4v', '.svi', '.3gp', '.3g2',
     '.mxf', '.roq', '.nsv', '.f4v', '.f4p', '.f4a', '.f4b'
 ])
+
+def md5_hash_file(file: pathlib.Path):
+    try:
+        with open(file, 'rb') as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except OSError:
+        pass
+    return None
+
+def sha1_hash_file(file: pathlib.Path):
+    try:
+        with open(file, 'rb') as f:
+            return hashlib.sha1(f.read()).hexdigest()
+    except OSError:
+        pass
+    return None
 
 def parse_sort_direction(val):
     print(val)
@@ -137,7 +153,7 @@ def frac_to_fps(frac: str):
 
 
 def main(videos, x, y, width, output_dir: pathlib.Path,
-         overwrite: bool, allow_all_extensions: bool, pattern: str, sort: str):
+         overwrite: bool, allow_all_extensions: bool, pattern: str, sort: str, hash_type: str):
     font = ImageFont.load_default()
     for f_test, size in TRY_FONTS:
         try:
@@ -170,7 +186,7 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         except KeyError as e:
             logging.error(f'Invalid pattern (-p). Unable to output thumb file.', exc_info=e)
             sys.exit(1)
-        #out_file = v.with_suffix('.jpg')
+            
         if output_dir is not None:
             out_file = output_dir / out_file.name
         if not overwrite and out_file.exists():
@@ -192,7 +208,7 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         thumb_count = min(num_frames, x*y)
         bracketed_thumb_count = min(num_frames, (x*y)+2)
 
-        logging.info("Extracting %d frames out of %d", thumb_count, num_frames)
+        logging.debug("Extracting %d frames out of %d", thumb_count, num_frames)
         
         w_scaled = ((width - MARGIN) // x) - MARGIN
         h_scaled = int(h * w_scaled / w)
@@ -200,9 +216,11 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         fps = max(1, num_frames // bracketed_thumb_count)
 
         # for large videos, faster to run ffmpeg multiple times than evaluate
-        # each frame in one pass through the video
+        # each frame in one pass through the video. The -ss can skip straight
+        # to a point in time, but cannot be used multiple times in one ffmpeg
+        # call
         if num_frames > LARGE_VIDEO_FRAME_COUNT:
-            logging.debug(f'Using multi-process heuristic because frame count {num_frames} > {LARGE_VIDEO_FRAME_COUNT}')
+            logging.debug(f'Using multi-process method because frame count {num_frames} > {LARGE_VIDEO_FRAME_COUNT}')
             frames = bytearray()
             skip = duration_s / bracketed_thumb_count
             try:
@@ -234,23 +252,31 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
             except ffmpeg._run.Error as e:
                 logging.error("Error collecting frames from video", exc_info=e)
                 continue
+        
+        # using all caps to gauge the max height of a line of text
+        _, text_height = font.getsize('SAMPLE')
+
+        max_header_text_lines = 4  # make sure to sync this with the code that comes after
+        header_height = 2*MARGIN + max_header_text_lines * (text_height + HEADER_TEXT_V_PADDING)
 
         # * 3 to cover R, G, and B bytes
         frame_size = w_scaled * h_scaled * 3
-        height = HEADER_HEIGHT + (MARGIN + h_scaled) * y
+        height = header_height + (MARGIN + h_scaled) * y
         base_layer = Image.new('RGB', (width, height), BACKGROUND_COLOR)
 
         duration = format_time(duration_s)        
         file_size = approximate_size_bytes(os.path.getsize(v))
+        hash = None
+        if hash_type == 'md5':
+            hash = f'MD5 Hash: {md5_hash_file(v)}'
+        elif hash_type == 'sha1':
+            hash = f'SHA1 Hash: {sha1_hash_file(v)}'
 
         header = ImageDraw.Draw(base_layer)
-        
-        # using all caps to gauge the max height of a line of text
-        _, h_height = header.textsize('SAMPLE', font=font)
 
         header.text((MARGIN, MARGIN), f'Filename: {v.name}', font=font, fill=HEADER_TEXT_COLOR)
-        header.text((MARGIN, MARGIN + (h_height + HEADER_TEXT_V_PADDING)*1), f'Duration: {duration}', font=font, fill=HEADER_TEXT_COLOR)
-        header.text((MARGIN, MARGIN + (h_height + HEADER_TEXT_V_PADDING)*2), f'File size: {file_size}', font=font, fill=HEADER_TEXT_COLOR)
+        header.text((MARGIN, MARGIN + (text_height + HEADER_TEXT_V_PADDING)*1), f'Duration: {duration}', font=font, fill=HEADER_TEXT_COLOR)
+        header.text((MARGIN, MARGIN + (text_height + HEADER_TEXT_V_PADDING)*2), f'File size: {file_size}', font=font, fill=HEADER_TEXT_COLOR)
 
         dimensions = f'Dimensions: {w}x{h} px'
         h_width, _ = header.textsize(dimensions, font=font)
@@ -258,11 +284,14 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         if video_codec:
             video_codec = f'Video: {video_codec}'
             h_width, _ = header.textsize(video_codec, font=font)
-            header.text((width-h_width-MARGIN, MARGIN + (h_height + HEADER_TEXT_V_PADDING) * 1), video_codec, font=font, fill=HEADER_TEXT_COLOR)
+            header.text((width-h_width-MARGIN, MARGIN + (text_height + HEADER_TEXT_V_PADDING) * 1), video_codec, font=font, fill=HEADER_TEXT_COLOR)
         if audio_codec:
             audio_codec = f'Audio: {audio_codec}'
             h_width, _ = header.textsize(audio_codec, font=font)
-            header.text((width-h_width-MARGIN, MARGIN + (h_height + HEADER_TEXT_V_PADDING) * 2), audio_codec, font=font, fill=HEADER_TEXT_COLOR)
+            header.text((width-h_width-MARGIN, MARGIN + (text_height + HEADER_TEXT_V_PADDING) * 2), audio_codec, font=font, fill=HEADER_TEXT_COLOR)
+        if hash:
+            h_width, _ = header.textsize(hash, font=font)
+            header.text((width-h_width-MARGIN, MARGIN + (text_height + HEADER_TEXT_V_PADDING) * 3), hash, font=font, fill=HEADER_TEXT_COLOR)
 
         
         for y_idx in range(y):
@@ -276,14 +305,14 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
                 base_layer.paste(
                     shadow,
                     (MARGIN + (MARGIN + w_scaled) * x_idx + SHADOW_MARGIN,
-                    HEADER_HEIGHT + (MARGIN + h_scaled) * y_idx + SHADOW_MARGIN))
+                    header_height + (MARGIN + h_scaled) * y_idx + SHADOW_MARGIN))
                 
                 border = Image.new('RGB',
                     (w_scaled + 2*BORDER_WIDTH, h_scaled + 2*BORDER_WIDTH), BORDER_COLOR)
                 base_layer.paste(
                     border,
                     (MARGIN + (MARGIN + w_scaled) * x_idx - BORDER_WIDTH,
-                    HEADER_HEIGHT + (MARGIN + h_scaled) * y_idx - BORDER_WIDTH))
+                    header_height + (MARGIN + h_scaled) * y_idx - BORDER_WIDTH))
                 
                 thumb = Image.frombytes('RGB', (w_scaled, h_scaled), frame, 'raw')
                 
@@ -307,7 +336,7 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
                 base_layer.paste(
                     thumb,
                     (MARGIN + (MARGIN + w_scaled) * x_idx,
-                    HEADER_HEIGHT + (MARGIN + h_scaled) * y_idx))
+                    header_height + (MARGIN + h_scaled) * y_idx))
                 
         base_layer.save(out_file)
 
@@ -337,6 +366,10 @@ if __name__ == '__main__':
                         help='Sort input by filename before '
                              'processing. Mostly useful when combined with '
                              '{idx} pattern. By default, left unsorted.')
+    parser.add_argument('--hash', choices={'none', 'md5', 'sha1'}, default='md5',
+                        help='Choose the hash algorithm to use in the description. '
+                             'If "none" is chosen, will not hash (this will make '
+                             'thumbnail generation faster)')
     parser.add_argument('--output-dir', type=pathlib.Path,
                         help="Alternate output directory for thumbnail.")
     parser.add_argument('videos', nargs='+', type=pathlib.Path, metavar='V')
@@ -348,4 +381,4 @@ if __name__ == '__main__':
         sys.exit(1)
 
     main(args.videos, args.dimensions['x'], args.dimensions['y'],
-         args.width, args.output_dir, args.overwrite, args.all, args.pattern, args.sort)
+         args.width, args.output_dir, args.overwrite, args.all, args.pattern, args.sort, args.hash)
