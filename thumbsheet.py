@@ -64,7 +64,6 @@ def sha1_hash_file(file: pathlib.Path):
     return None
 
 def parse_sort_direction(val):
-    print(val)
     if val is not None and val not in '+-':
         raise ValueError("Sorting direction must be +, -, or empty string")
     return val
@@ -83,6 +82,11 @@ def format_time(sec):
     
     
 def video_info(v, count_frames=False):
+    '''
+    Extract metadata from the video using the ffprobe application. If the metadata
+    does not contain the number of frames, it will retry the probe with the
+    'count_frames' option, which manually counts the number of frames.
+    '''
     if count_frames:
         probe = ffmpeg.probe(str(v), count_frames=None)
     else:
@@ -94,7 +98,9 @@ def video_info(v, count_frames=False):
         raise ValueError()
         
     try:
-        num_frames = int(video_stream.get('nb_frames') or video_stream['nb_read_frames'])
+        num_frames = int(video_stream.get('nb_frames') or
+                         video_stream.get('nb_read_frames') or
+                         video_stream.get('tags', {})['NUMBER_OF_FRAMES-eng'])
     except (KeyError, ValueError):
         if count_frames:
             raise
@@ -126,6 +132,11 @@ UNITS = {1000: ['KB', 'MB', 'GB'],
          1024: ['KiB', 'MiB', 'GiB']}
 
 def approximate_size_bytes(size, mult=1000):
+    '''
+    Convert a number representing bytes into the closest
+    approximation of its scale using either the metric
+    prefix (Kilo) or IEC prefix (Kibi)
+    '''
     for unit in UNITS[mult]:
         size = size / mult
         if size < mult:
@@ -135,6 +146,11 @@ UNITS_BITS = {1000: ['Kb', 'Mb', 'Gb'],
               1024: ['Kib', 'Mib', 'Gib']}
 
 def approximate_size_bits(size, mult=1000):
+    '''
+    Convert a number representing bits into the closest
+    approximation of its scale using either the metric
+    prefix (Kilo) or IEC prefix (Kibi)
+    '''
     for unit in UNITS_BITS[mult]:
         size = size / mult
         if size < mult:
@@ -142,6 +158,10 @@ def approximate_size_bits(size, mult=1000):
 
 
 def frac_to_fps(frac: str):
+    '''
+    Converts a fraction (e.g. 25/2) into a number (12.5). If an error
+    occurs, return the original fraction.
+    '''
     if frac is None:
         return None
     lft, sep, rt = frac.partition('/')
@@ -265,7 +285,7 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
         # using all caps to gauge the max height of a line of text
         _, text_height = font.getsize('SAMPLE')
 
-        max_header_text_lines = 4  # make sure to sync this with the code that comes after
+        max_header_text_lines = 4  # make sure to sync this with the code that comes after if adding additional header metadata
         header_height = 2*MARGIN + max_header_text_lines * (text_height + HEADER_TEXT_V_PADDING)
 
         # * 3 to cover R, G, and B bytes
@@ -333,13 +353,14 @@ def main(videos, x, y, width, output_dir: pathlib.Path,
                 txt_y = h_scaled - txt_h - 5
 
                 # jumble the text by 1px in all directions to create a
-                # border keeping the text readable
+                # border, keeping the text readable even on a background
+                # matching the timestamp text color
                 draw.text((txt_x-1, txt_y-1), text, font=font, fill=SHADOW_COLOR)
                 draw.text((txt_x+1, txt_y-1), text, font=font, fill=SHADOW_COLOR)
                 draw.text((txt_x-1, txt_y+1), text, font=font, fill=SHADOW_COLOR)
                 draw.text((txt_x+1, txt_y+1), text, font=font, fill=SHADOW_COLOR)
 
-                # now draw the text over it
+                # now draw the timestamp over it
                 draw.text((txt_x, txt_y), text, font=font, fill=TIMESTAMP_TEXT_COLOR)
 
                 base_layer.paste(
