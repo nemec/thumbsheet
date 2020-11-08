@@ -34,6 +34,7 @@ OUTPUT_FILE_EXTENSION = '.png'  # '.jpg'
 LARGE_VIDEO_FRAME_COUNT = 10000
 
 TRY_FONTS = [
+    ('fonts/DejaVuSans.ttf', 14),
     ('DejaVuSans.ttf', 14),
     ('Helvetica.ttf', 14)
 ]
